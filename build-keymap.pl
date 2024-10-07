@@ -114,11 +114,15 @@ my @high_function_keys = <<'HIGH_FUNCTION_KEYS' =~ m/[{]"([^"]+)"/g;
     {"f18", pqrs::hid::usage::keyboard_or_keypad::keyboard_f18},
     {"f19", pqrs::hid::usage::keyboard_or_keypad::keyboard_f19},
     {"f20", pqrs::hid::usage::keyboard_or_keypad::keyboard_f20},
+HIGH_FUNCTION_KEYS
+
+# these keys aren't recoginized by Keyboard Maestro, Things, etc.
+my @too_high_function_keys = <<'TOO_HIGH_FUNCTION_KEYS' =~ m/[{]"([^"]+)"/g;
     {"f21", pqrs::hid::usage::keyboard_or_keypad::keyboard_f21},
     {"f22", pqrs::hid::usage::keyboard_or_keypad::keyboard_f22},
     {"f23", pqrs::hid::usage::keyboard_or_keypad::keyboard_f23},
     {"f24", pqrs::hid::usage::keyboard_or_keypad::keyboard_f24},
-HIGH_FUNCTION_KEYS
+TOO_HIGH_FUNCTION_KEYS
 
 my @modifier_keys = <<'MODIFIER_KEYS' =~ m/[{]"([^"]+)"/g;
     {"left_control", pqrs::hid::usage::keyboard_or_keypad::keyboard_left_control},
@@ -134,7 +138,7 @@ my @rules;
 #####
 
 my $hyper = {
-    description => "Ludicrous Key's Hyper Key: Change CapsLock+key (without any other modifier key behin pressed) into Shift+Option+Control+Command+key",
+    description => "Ludicrous Key's Hyper Key: Change CapsLock+key (without any other modifier key being pressed) into Shift+Option+Control+Command+key",
     manipulators =>  [
         {
             type => "basic",
@@ -178,9 +182,9 @@ for my $key (@standard_keys) {
                 key_code => $key,
                 modifiers => [
                         "left_shift",
-                        "left_command",
+                        "left_gui",
                         "left_control",
-                        "left_option",
+                        "left_alt",
                 ]
             }
         ],
@@ -190,10 +194,10 @@ for my $key (@standard_keys) {
 
 
 #####
-# 
+# capslock + shift and capslock + command
 #####
 
-# key we're going to map to
+# keys we're going to map to
 my @pool;
 for my $key (@high_function_keys) {
     for my $thingy (0..(2**@modifier_keys-1)) {
@@ -201,10 +205,34 @@ for my $key (@high_function_keys) {
         for (0..(@modifier_keys-1)) {
             push @m, $modifier_keys[$_] if $thingy & (1<<$_);
         }
-        push @pool, [{
+        push @pool, {
             key_code => $key,
             modifiers => \@m,
-        }]
+        }
+    }
+}
+
+my $safe = {
+    description => "Ludicrous Key: CapsLock+Shift+key and CapsLock+Command+key into assignable keys not on standard keyboards",
+    manipulators =>  [],
+};
+push @rules, $safe;
+
+for my $mod (qw( shift command )) {
+    my @from = @standard_keys;
+    push @from, @function_keys unless $mod eq "option";
+
+    for my $key (@from) {
+        die "Out of keys! when trying to do $mod $key" unless @pool;
+        push $safe->{manipulators}->@*, {
+            type => "basic",
+            from => {
+                key_code => $key,
+                modifiers => { mandatory => [ $mod ], optional => [] },
+            },
+            to => [ shift @pool ],
+            @with_caps_lock,
+        };
     }
 }
 
@@ -214,6 +242,6 @@ for my $key (@high_function_keys) {
 
 print encode_json({
     title => "Ludicrous Key (http://www.ludicriouskey.com)",
-    author => "Mark Fowler (http://ww.ludicriouskey.com)",
+    author => "Mark Fowler (http://www.ludicriouskey.com)",
     rules => \@rules
 });
