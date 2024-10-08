@@ -66,6 +66,14 @@ my @standard_keys = <<'STANDARD_KEYS' =~ m/[{]"([^"]+)"/g;
     {"slash", pqrs::hid::usage::keyboard_or_keypad::keyboard_slash},
 STANDARD_KEYS
 
+# these are the arrow keys
+my @arrow_keys = <<'ARROW_KEYS' =~ m/[{]"([^"]+)"/g;
+    {"right_arrow", pqrs::hid::usage::keyboard_or_keypad::keyboard_right_arrow},
+    {"left_arrow", pqrs::hid::usage::keyboard_or_keypad::keyboard_left_arrow},
+    {"down_arrow", pqrs::hid::usage::keyboard_or_keypad::keyboard_down_arrow},
+    {"up_arrow", pqrs::hid::usage::keyboard_or_keypad::keyboard_up_arrow},
+ARROW_KEYS
+
 # these are the function keys that are on a mac laptop US-english keyboard
 my @function_keys = <<'FUNCTION_KEYS' =~ m/[{]"([^"]+)"/g;
     {"f1", pqrs::hid::usage::keyboard_or_keypad::keyboard_f1},
@@ -131,35 +139,6 @@ my @modifier_keys = <<'MODIFIER_KEYS' =~ m/[{]"([^"]+)"/g;
     {"left_gui", pqrs::hid::usage::keyboard_or_keypad::keyboard_left_gui},
 MODIFIER_KEYS
 
-my @rules;
-
-#####
-# hyper key (caps lock + a key, no other modifier keys!)
-#####
-
-my $hyper = {
-    description => "Ludicrous Key's Hyper Key: Change CapsLock+key (without any other modifier key being pressed) into Shift+Option+Control+Command+key",
-    manipulators =>  [
-        {
-            type => "basic",
-            from => {
-                key_code => "caps_lock",
-                modifiers => { optional => ["any"] },
-            },
-            to => [
-               {
-                    set_variable => {
-                        name => "ludicrous_key_caps_lock_down",
-                        value => 1,
-                        key_up_value =>  0,
-                    },
-                },
-            ],
-        },
-    ],
-};
-push @rules, $hyper;
-
 my @with_caps_lock = (
     conditions => [
         {
@@ -170,8 +149,13 @@ my @with_caps_lock = (
     ],
 );
 
+#####
+# hyper key (caps lock + a key, no other modifier keys!)
+#####
+
+my @hyper_manipulators;
 for my $key (@standard_keys) {
-    push $hyper->{manipulators}->@*, {
+    push @hyper_manipulators, {
         type => "basic",
         from => {
             key_code => $key,
@@ -192,9 +176,8 @@ for my $key (@standard_keys) {
     };
 }
 
-
 #####
-# capslock + shift and capslock + command
+# ludicrous key (capslock + shift and capslock + command)
 #####
 
 # keys we're going to map to
@@ -212,27 +195,30 @@ for my $key (@high_function_keys) {
     }
 }
 
-my $safe = {
-    description => "Ludicrous Key: CapsLock+Shift+key and CapsLock+Command+key into assignable keys not on standard keyboards",
-    manipulators =>  [],
-};
-push @rules, $safe;
-
+my @ludicrious_manipulators;
 for my $mod (qw( shift command )) {
-    my @from = @standard_keys;
-    push @from, @function_keys unless $mod eq "option";
+    my @from = (@standard_keys, @arrow_keys);
 
     for my $key (@from) {
-        die "Out of keys! when trying to do $mod $key" unless @pool;
-        push $safe->{manipulators}->@*, {
+        my $from_str = "caps lock + $mod + $key";
+        unless (@pool) {
+            print STDERR "Out of keys! when trying to do $from_str\n";
+            next;
+        }
+
+        my $to = shift @pool;
+        push @ludicrious_manipulators, {
             type => "basic",
             from => {
                 key_code => $key,
                 modifiers => { mandatory => [ $mod ], optional => [] },
             },
-            to => [ shift @pool ],
+            to => [ $to ],
             @with_caps_lock,
         };
+
+        my $to_str = join " + ", $to->{modifiers}->@*, $to->{key_code};
+        print STDERR "$from_str -> $to_str\n"
     }
 }
 
@@ -243,5 +229,29 @@ for my $mod (qw( shift command )) {
 print encode_json({
     title => "Ludicrous Key (http://www.ludicriouskey.com)",
     author => "Mark Fowler (http://www.ludicriouskey.com)",
-    rules => \@rules
+    rules => [
+        {
+            description => "Ludicrous Key (http://www.ludicriouskey.com)",
+            manipulators =>  [
+                {
+                    type => "basic",
+                    from => {
+                        key_code => "caps_lock",
+                        modifiers => { optional => ["any"] },
+                    },
+                    to => [
+                    {
+                            set_variable => {
+                                name => "ludicrous_key_caps_lock_down",
+                                value => 1,
+                                key_up_value => 0,
+                            },
+                        },
+                    ],
+                },
+                @hyper_manipulators,
+                @ludicrious_manipulators,
+            ],
+        },
+    ],
 });
